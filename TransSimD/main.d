@@ -64,7 +64,7 @@ struct SimData {
 	Traveler[] travelers;
 
 	void setup() {
-		// add vehicles
+		// add vehicles and drives to routes
 		foreach(r; routes) {
 			auto v = Vehicle();
 			v.driver = drivers[r.origin().id].front;
@@ -78,6 +78,13 @@ struct SimData {
 			r.terminus().vehicles ~= v;
 
 			writeln(v.driver.name, " entering vehicle at terminus station: ", r.origin().id);
+		}
+
+		foreach(p; travelers) {
+			stations[p.start].travelers ~= p;
+		}
+		foreach(k, v; stations) {
+			writeln("Stop #", k, " has #", v.travelers.length);
 		}
 	}
 }
