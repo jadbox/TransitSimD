@@ -17,6 +17,8 @@ void main(string[] args)
 
 	data.setup();
 
+	//data.step();
+	//sdata.step();
 	stdin.readln();
 }
 
@@ -40,19 +42,18 @@ void parseRoutes(ref SimData simdata) {
 		"KIngleside.csv", "LTaraval.csv", "NJudah.csv","TThird.csv"];
 
 	foreach(file; files) {
-		Route route = Route();
+		Route *route = new Route();
 
 		auto f = File("data\\" ~ file);
 		route.name = f.readln(','); route.name.popBack();
 		f.readln();
 		foreach( r; f.byRecord!(string, int)("%s,%s") ) {
-			auto s = Station();
+			auto s = new Station();
 			s.id = r[1];
 			s.name = r[0];
 			simdata.stations[s.id] = s;
 			route.stations ~= s;
 		}
-		//writeln(route.name);
 		simdata.routes ~= route;
 	}
 }
@@ -60,54 +61,127 @@ void parseRoutes(ref SimData simdata) {
 struct SimData {
 	Routes routes = [];
 	Driver[][int] drivers; // key by starting station ID
-	Station[int] stations;
+	Station*[int] stations;
 	Traveler[] travelers;
-
+	Vehicle*[] vehicles=[];
+	// Set the vehicles at their stations as well as the travelers
 	void setup() {
 		// add vehicles and drives to routes
 		foreach(r; routes) {
-			auto v = makeVehicle(r.origin(), r);
-			writeln(v.driver.name, " entering vehicle at origin station: ", r.origin().id);
+			auto v = makeVehicle(*r.origin(), *r);
+			writeln(v.driver.name, " entering vehicle at origin station: ", r.origin().id, " ", v.currentStation().id);
 
-			v = makeVehicle(r.terminus(), r);
+			v = makeVehicle(*r.terminus(), *r);
 			writeln(v.driver.name, " entering vehicle at terminus station: ", r.origin().id);
 		}
 
 		foreach(p; travelers) {
 			stations[p.start].travelers ~= p;
 		}
+		/*
 		foreach(k, v; stations) {
 			writeln("Stop #", k, " has #", v.travelers.length);
 		}
+		*/
 	}
-	Vehicle makeVehicle(Station station, Route r) {
-		auto v = Vehicle();
+	ref Vehicle makeVehicle(ref Station station, ref Route r) {
+		if(drivers[station.id].length==0) {
+			//TODO
+		}
+		auto v = new Vehicle(r);
 		v.driver = drivers[station.id].front;
-		v.route = r;
 		drivers[station.id].popFront();
-		station.vehicles ~= v;
-		return v;
+		vehicles ~= v;
+		return *v;
+	}
+
+	void step() {
+		//
+		writeln("step started");
+		foreach(v; vehicles) {
+			updateStation(*v, *v.currentStation());
+			v.travel(); // arriving on station
+			writeln("Driver traveled:", v.driver.name, " ", v.last.id,"-",v.currentStation().id);
+		}
+
+		writeln("sten ended");
+	}
+	void updateStation(ref Vehicle v, ref Station s) {
+		//writeln(s.travelers.length);
+		foreach(t; s.travelers) {
+
+			if( v.onTheWay( t.end ) ) v.board(t);
+		}
+	}
+	void updatePerson(ref Traveler p, ref Station s) {
+
 	}
 }
 
 struct Vehicle {
 	Driver driver;
 	Route route;
+	Station*[] traveling; // list of stations in its current direction
 	People passengers;
+	bool goingToTerminus;
+	int capacity = 50;
+	Station* last;
+
+	this(ref Route route) {
+		this.route = route;
+		traveling.length = route.stations.length;
+		traveling[] = route.stations[];
+		writeln(traveling.length);
+	}
+
+	void board(ref Traveler t) {
+		if(isFull()) return;
+		passengers ~= t;
+		writeln(t.name, " is boarding on ", driver.name, "'s buss"); 
+	}
+
+	bool isFull() {
+		return passengers.length >= 50;
+	}
+
+	bool onTheWay(int id) {
+		bool r=false;
+		foreach(t;traveling) if(t.id==id) return true;
+		return false;
+	}
+
+	ref auto currentStation() { return traveling[0]; }
+
+	ref auto travel() {
+		last = currentStation();
+		traveling = traveling[1..$];
+		if(traveling.length==0) {
+			traveling[] = route.stations[];
+			goingToTerminus = !goingToTerminus;
+			if(!goingToTerminus) traveling.reverse;
+		}
+
+		return currentStation();
+	}
 }
 struct Traveler {
 	string name;
 	int start, end;
 }
-alias Routes = Route[];
+alias Routes = Route*[];
 alias People = Traveler[];
 struct Route {
 	string name;
-	Station[] stations;
-	Station origin() { return stations[0]; }
-	Station terminus() { return stations[stations.length-1]; }
+	Station*[] stations;
+	auto origin() { return stations[0]; }
+	auto terminus() { return stations[stations.length-1]; }
 	bool atEndPoints(int id) {
 		return origin().id == id || terminus().id == id;
+	}
+	bool has(int id) {
+		bool r;
+		foreach(s;stations) if(s.id==id) return true;
+		return false;
 	}
 	alias stations this;
 }
@@ -115,7 +189,7 @@ struct Station {
 	string name;
 	int id;
 	People travelers;
-	Vehicle[] vehicles;
+	//Vehicle[] vehicles;
 }
 struct Driver {
 	string name;
