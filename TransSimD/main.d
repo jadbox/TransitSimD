@@ -66,17 +66,10 @@ struct SimData {
 	void setup() {
 		// add vehicles and drives to routes
 		foreach(r; routes) {
-			auto v = Vehicle();
-			v.driver = drivers[r.origin().id].front;
-			drivers[r.origin().id].popFront();
-			r.origin().vehicles ~= v;
+			auto v = makeVehicle(r.origin(), r);
 			writeln(v.driver.name, " entering vehicle at origin station: ", r.origin().id);
 
-			v = Vehicle();
-			v.driver = drivers[r.terminus().id].front;
-			drivers[r.terminus().id].popFront();
-			r.terminus().vehicles ~= v;
-
+			v = makeVehicle(r.terminus(), r);
 			writeln(v.driver.name, " entering vehicle at terminus station: ", r.origin().id);
 		}
 
@@ -86,6 +79,14 @@ struct SimData {
 		foreach(k, v; stations) {
 			writeln("Stop #", k, " has #", v.travelers.length);
 		}
+	}
+	Vehicle makeVehicle(Station station, Route r) {
+		auto v = Vehicle();
+		v.driver = drivers[station.id].front;
+		v.route = r;
+		drivers[station.id].popFront();
+		station.vehicles ~= v;
+		return v;
 	}
 }
 
