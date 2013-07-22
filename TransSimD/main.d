@@ -9,13 +9,13 @@ import std.array;
 import std.conv;
 import std.functional;
 
-enum SIM_STEPS = 30;
+enum SIM_STEPS = 60;
 
 void main(string[] args)
 {
 	writeln("sim started");
 	SimData data = SimData();
-	auto parsers = [&parseDrivers, &parseTravelers, &parseRoutes];
+	auto parsers = [&parseDrivers, &parseTravelers, &parseRoutes, &parseTransfers];
 	foreach(ref p;parsers) p(data);
 	writeln("parsed");
 	data.setup();
@@ -41,6 +41,23 @@ void parseTravelers(ref SimData simdata) {
 		Traveler* t = new Traveler();
 		t.name = r[0]; t.start = r[1]; t.end = r[2];
 		simdata.travelers[t.key()] = t;
+	}
+}
+
+void parseTransfers(ref SimData simdata) {
+	auto f = File("data\\TransferStops.csv");
+	f.readln();
+	foreach(ref r; f.byRecord!(int, int, string, string)("%s,%s,%s,%s") ) {
+		Transfer* t = new Transfer();
+		t.p1 = r[0];
+		t.p2 = r[1];
+		t.description = std.string.strip(r[2]);
+		t.routes = std.string.strip(r[3]);
+
+		Route *route = new Route();
+		route.name="rail";
+		route.stations ~= simdata.stations[t.p1];
+		route.stations ~= simdata.stations[t.p2];
 	}
 }
 
@@ -97,14 +114,20 @@ struct SimData {
 		*/
 	}
 	ref Vehicle makeVehicle(ref Station station, ref Route r) {
-		if(drivers[station.id].length==0) {
-			//TODO
-		}
 		auto v = new Vehicle(r);
-		v.driver = drivers[station.id].front;
-		drivers[station.id].popFront();
+		if(r.name=="rail") {
+			// No driver for rail car
+		} else {
+			v.driver = getDriver(station.id);
+		}
 		vehicles ~= v;
 		return *v;
+	}
+
+	Driver getDriver(int stationID){
+		auto d = drivers[stationID].front;
+		drivers[stationID].popFront();
+		return d;
 	}
 
 	void step() {
@@ -120,6 +143,10 @@ struct SimData {
 		writeln("step ended");
 	}
 	void updateVehicle(ref Vehicle v) {
+		if(v.driver.trips > 6) {
+			writeln("time for driver change");
+			v.driver = getDriver(v.currentStation().id);
+		}
 		foreach(key, ref t; v.passengers) {
 			if(t.end==v.currentStation().id) {
 				travelerExits(*t, v);
@@ -188,11 +215,14 @@ struct Vehicle {
 
 	ref auto travel() {
 		last = currentStation();
-		traveling = traveling[1..$];
+		traveling.popFront();
+		//writeln(traveling.length);
 		if(traveling.length==0) {
 			traveling.length = route.stations.length;
 			traveling[] = route.stations[];
+			writeln("::",traveling.length);
 			reverse();
+			if(route.name!="rail") driver.trips++; // Update driver
 		}
 
 		return currentStation();
@@ -208,6 +238,13 @@ struct Traveler {
 		return _key;
 	}
 }
+struct Transfer {
+	int p1;
+	int p2;
+	string description;
+	string routes;
+}
+
 alias Routes = Route*[];
 alias People = Traveler*[string];
 struct Route {
