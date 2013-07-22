@@ -9,23 +9,27 @@ import std.array;
 import std.conv;
 import std.functional;
 
+enum SIM_STEPS = 30;
+
 void main(string[] args)
 {
+	writeln("sim started");
 	SimData data = SimData();
 	auto parsers = [&parseDrivers, &parseTravelers, &parseRoutes];
-	foreach(p;parsers) p(data);
-
+	foreach(ref p;parsers) p(data);
+	writeln("parsed");
 	data.setup();
+	writeln("setup finished");
 
-	data.step();
-	//sdata.step();
+	for(int i=0; i < SIM_STEPS; i++) data.step();
+
 	stdin.readln();
 }
 
 // Parses drivers
 void parseDrivers(ref SimData simdata) {
 	auto drivers = csvReader!Driver("data/drivers.csv".readText(),',');
-	foreach(d; drivers) {
+	foreach(ref d; drivers) {
 		simdata.drivers[d.startID] ~= d;
 	}
 }
@@ -33,13 +37,11 @@ void parseDrivers(ref SimData simdata) {
 // Parses travelers
 void parseTravelers(ref SimData simdata) {
 	auto f = File("data/passengers.csv");
-	foreach( r; f.byRecord!(string, int, int)("%s,%s,%s") ) {
+	foreach(ref r; f.byRecord!(string, int, int)("%s,%s,%s") ) {
 		Traveler* t = new Traveler();
 		t.name = r[0]; t.start = r[1]; t.end = r[2];
-		simdata.travelers ~= t;
+		simdata.travelers[t.key()] = t;
 	}
-	//auto travelers = csvReader!Traveler("data/passengers.csv".readText(),',');
-	//foreach(t; travelers) simdata.travelers ~= t;
 }
 
 // Parses Routes
@@ -47,13 +49,13 @@ void parseRoutes(ref SimData simdata) {
 	auto files = ["47VanNess.csv","8xBayshore.csv", "49Mission.csv",
 		"KIngleside.csv", "LTaraval.csv", "NJudah.csv","TThird.csv"];
 
-	foreach(file; files) {
+	foreach(ref file; files) {
 		Route *route = new Route();
 
 		auto f = File("data\\" ~ file);
 		route.name = f.readln(','); route.name.popBack();
 		f.readln();
-		foreach( r; f.byRecord!(string, int)("%s,%s") ) {
+		foreach(ref r; f.byRecord!(string, int)("%s,%s") ) {
 			auto s = new Station();
 			s.id = r[1];
 			s.name = r[0];
@@ -68,12 +70,12 @@ struct SimData {
 	Routes routes = [];
 	Driver[][int] drivers; // key by starting station ID
 	Station*[int] stations;
-	Traveler*[] travelers;
+	Traveler*[string] travelers;
 	Vehicle*[] vehicles=[];
 	// Set the vehicles at their stations as well as the travelers
 	void setup() {
 		// add vehicles and drives to routes
-		foreach(r; routes) {
+		foreach(ref r; routes) {
 			auto v = makeVehicle(*r.origin(), *r);
 			writeln(v.driver.name, " entering vehicle at origin station: ", r.origin().id, " = ", v.currentStation().id);
 
@@ -82,11 +84,11 @@ struct SimData {
 			writeln(v.driver.name, " entering vehicle at terminus station: ", r.terminus().id, " = ", v.currentStation().id);
 		}
 
-		foreach(p; travelers) {if(p.start > 1000) continue;
-			writeln(p.start, " ", stations.length );
+		foreach(key, ref p; travelers) {
+			//writeln(p.start, " ", stations.length );
 
 			//if( p.start !in stations ) stations[p.start] = [];
-			stations[p.start].travelers ~= p;
+			stations[p.start].travelers[p.key()] = p;
 		}
 		/*
 		foreach(k, v; stations) {
@@ -108,28 +110,38 @@ struct SimData {
 	void step() {
 		//
 		writeln("step started");
-		foreach(v; vehicles) {
+		foreach(ref v; vehicles) {
+			updateVehicle(*v);
 			updateStation(*v, *v.currentStation());
 			v.travel(); // arriving on station
-			writeln("Driver traveled:", v.driver.name, " ", v.last.id,"->",v.currentStation().id);
+			//writeln("Driver traveled:", v.driver.name, " ", v.last.id,"->",v.currentStation().id);
 		}
 
 		writeln("step ended");
 	}
-	void updateStation(ref Vehicle v, ref Station s) {
-		foreach(t; s.travelers) {
-			if(t.end==s.id) {
-				travelerExits(*t);
-			}
-			if( v.isFull() ) continue;
-			if( v.onTheWay( t.end ) ) {
-				v.board(*t);
-
+	void updateVehicle(ref Vehicle v) {
+		foreach(key, ref t; v.passengers) {
+			if(t.end==v.currentStation().id) {
+				travelerExits(*t, v);
 			}
 		}
 	}
-	void travelerExits(ref Traveler v) {
-		writeln("Traveler ",v.name, " exits");
+	void updateStation(ref Vehicle v, ref Station s) {
+		//writeln(s.travelers.length);
+		Traveler*[] boardedTravelers;
+		foreach(ref t; s.travelers) {
+			if( v.isFull() ) continue;
+			if( v.onTheWay( t.end ) ) {
+				v.board(*t);
+				boardedTravelers ~= t;
+			}
+		}
+		foreach(ref t; boardedTravelers) s.travelers.remove(t.key());
+	}
+	void travelerExits(ref Traveler t, ref Vehicle v) {
+		//v.travelers.remove(v);
+		v.passengers.remove(t.key());
+		writeln("Traveler ",t.name, " exits vehicle: ", v.driver.name, " from route: ", v.route.name);
 	}
 	void updatePerson(ref Traveler p, ref Station s) {
 
@@ -153,8 +165,8 @@ struct Vehicle {
 
 	void board(ref Traveler t) {
 		if(isFull()) return;
-		passengers ~= &t;
-		writeln(t.name, " is boarding on ", driver.name, "'s buss"); 
+		passengers[t.key()] = &t;
+		///writeln(t.name, " is boarding on ", driver.name, "'s buss"); 
 	}
 
 	bool isFull() {
@@ -163,7 +175,7 @@ struct Vehicle {
 
 	bool onTheWay(int id) {
 		bool r=false;
-		foreach(t;traveling) if(t.id==id) return true;
+		foreach(ref t;traveling) if(t.id==id) return true;
 		return false;
 	}
 
@@ -178,6 +190,7 @@ struct Vehicle {
 		last = currentStation();
 		traveling = traveling[1..$];
 		if(traveling.length==0) {
+			traveling.length = route.stations.length;
 			traveling[] = route.stations[];
 			reverse();
 		}
@@ -188,20 +201,26 @@ struct Vehicle {
 struct Traveler {
 	string name;
 	int start, end;
+
+	private string _key=null;
+	ref string key() {
+		if(_key==null) _key = name ~ std.conv.to!string(start) ~ ":" ~ std.conv.to!string(end);
+		return _key;
+	}
 }
 alias Routes = Route*[];
-alias People = Traveler*[];
+alias People = Traveler*[string];
 struct Route {
 	string name;
 	Station*[] stations;
-	auto origin() { return stations[0]; }
-	auto terminus() { return stations[stations.length-1]; }
+	ref auto origin() { return stations[0]; }
+	ref auto terminus() { return stations[stations.length-1]; }
 	bool atEndPoints(int id) {
 		return origin().id == id || terminus().id == id;
 	}
 	bool has(int id) {
 		bool r;
-		foreach(s;stations) if(s.id==id) return true;
+		foreach(ref s;stations) if(s.id==id) return true;
 		return false;
 	}
 	alias stations this;
