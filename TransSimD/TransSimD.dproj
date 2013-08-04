@@ -9,6 +9,7 @@
     <PreferOneStepBuild>true</PreferOneStepBuild>
     <UseDefaultCompiler>true</UseDefaultCompiler>
     <IncrementalLinking>true</IncrementalLinking>
+    <Compiler>DMD2</Compiler>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -76,5 +77,6 @@
     <None Include="data\TThird.csv">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="t.txt" />
   </ItemGroup>
 </Project>
